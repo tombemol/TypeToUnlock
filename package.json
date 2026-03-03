@@ -1,0 +1,47 @@
+{
+    "name": "type-to-unlock",
+    "displayName": "TypeToUnlock",
+    "description": "Progressively insert AI-generated code by pressing keys",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.80.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "type-to-unlock.start",
+                "title": "TypeToUnlock: Start"
+            },
+            {
+                "command": "type-to-unlock.startFromClipboard",
+                "title": "TypeToUnlock: Start from Clipboard"
+            },
+            {
+                "command": "type-to-unlock.keypress",
+                "title": "TypeToUnlock: Trigger Keypress"
+            }
+        ],
+        "keybindings": [
+            {
+                "command": "type-to-unlock.keypress",
+                "key": "tab",
+                "when": "editorTextFocus && typeToUnlock.active"
+            }
+        ]
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./"
+    },
+    "devDependencies": {
+        "@types/node": "^18.x",
+        "@types/vscode": "^1.80.0",
+        "typescript": "^5.1.3"
+    }
+}
