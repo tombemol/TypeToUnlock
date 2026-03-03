@@ -3,6 +3,7 @@
     "displayName": "TypeToUnlock",
     "description": "Progressively insert AI-generated code by pressing keys",
     "version": "0.0.1",
+    "icon": "assets/icon.png",
     "engines": {
         "vscode": "^1.80.0"
     },
