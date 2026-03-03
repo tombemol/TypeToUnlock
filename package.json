@@ -24,6 +24,10 @@
             {
                 "command": "type-to-unlock.keypress",
                 "title": "TypeToUnlock: Trigger Keypress"
+            },
+            {
+                "command": "type-to-unlock.keypressLine",
+                "title": "TypeToUnlock: Trigger Line Keypress"
             }
         ],
         "keybindings": [
@@ -31,8 +35,23 @@
                 "command": "type-to-unlock.keypress",
                 "key": "tab",
                 "when": "editorTextFocus && typeToUnlock.active"
+            },
+            {
+                "command": "type-to-unlock.keypressLine",
+                "key": "shift+tab",
+                "when": "editorTextFocus && typeToUnlock.active"
             }
-        ]
+        ],
+        "configuration": {
+            "title": "TypeToUnlock",
+            "properties": {
+                "typeToUnlock.charsPerKeypress": {
+                    "type": "integer",
+                    "default": 1,
+                    "description": "Number of characters to unlock per keypress"
+                }
+            }
+        }
     },
     "scripts": {
         "vscode:prepublish": "npm run compile",

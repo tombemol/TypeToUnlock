@@ -50,13 +50,20 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         if (currentPointer < storedCode.length) {
-            const charToInsert = storedCode.substring(currentPointer, currentPointer + 1);
+            const config = vscode.workspace.getConfiguration('typeToUnlock');
+            const charsToUnlock = Math.max(1, config.get<number>('charsPerKeypress', 1));
+
+            let nextPointer = currentPointer + charsToUnlock;
+            if (nextPointer > storedCode.length) {
+                nextPointer = storedCode.length;
+            }
+            const chunkToInsert = storedCode.substring(currentPointer, nextPointer);
 
             editor.edit(editBuilder => {
-                editBuilder.insert(editor.selection.active, charToInsert);
+                editBuilder.insert(editor.selection.active, chunkToInsert);
             }).then(success => {
                 if (success) {
-                    currentPointer++;
+                    currentPointer = nextPointer;
 
                     if (currentPointer >= storedCode.length) {
                         setUnlockMode(false);
@@ -68,7 +75,43 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    context.subscriptions.push(startCommand, startFromClipboardCommand, keypressCommand);
+    const keypressLineCommand = vscode.commands.registerCommand('type-to-unlock.keypressLine', () => {
+        if (!unlockModeActive) {
+            return;
+        }
+
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+
+        if (currentPointer < storedCode.length) {
+            let nextPointer = storedCode.indexOf('\n', currentPointer);
+            if (nextPointer === -1) {
+                nextPointer = storedCode.length;
+            } else {
+                nextPointer++; // Include the newline character
+            }
+
+            const chunkToInsert = storedCode.substring(currentPointer, nextPointer);
+
+            editor.edit(editBuilder => {
+                editBuilder.insert(editor.selection.active, chunkToInsert);
+            }).then(success => {
+                if (success) {
+                    currentPointer = nextPointer;
+
+                    if (currentPointer >= storedCode.length) {
+                        setUnlockMode(false);
+                        storedCode = '';
+                        vscode.window.showInformationMessage('Code fully unlocked!');
+                    }
+                }
+            });
+        }
+    });
+
+    context.subscriptions.push(startCommand, startFromClipboardCommand, keypressCommand, keypressLineCommand);
 }
 
 export function deactivate() {
