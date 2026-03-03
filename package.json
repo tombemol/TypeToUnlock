@@ -28,6 +28,22 @@
             {
                 "command": "type-to-unlock.keypressLine",
                 "title": "TypeToUnlock: Trigger Line Keypress"
+            },
+            {
+                "command": "type-to-unlock.toggleStrictMode",
+                "title": "TypeToUnlock: Toggle Strict Mode"
+            },
+            {
+                "command": "type-to-unlock.toggleExplainMode",
+                "title": "TypeToUnlock: Toggle Explain Mode"
+            },
+            {
+                "command": "type-to-unlock.showStats",
+                "title": "TypeToUnlock: Show Stats"
+            },
+            {
+                "command": "type-to-unlock.blockAction",
+                "title": "TypeToUnlock: Block Action (Internal)"
             }
         ],
         "keybindings": [
@@ -40,6 +56,52 @@
                 "command": "type-to-unlock.keypressLine",
                 "key": "shift+tab",
                 "when": "editorTextFocus && typeToUnlock.active"
+            },
+            {
+                "command": "type-to-unlock.blockAction",
+                "key": "backspace",
+                "when": "editorTextFocus && typeToUnlock.active && typeToUnlock.strictMode"
+            },
+            {
+                "command": "type-to-unlock.blockAction",
+                "key": "delete",
+                "when": "editorTextFocus && typeToUnlock.active && typeToUnlock.strictMode"
+            },
+            {
+                "command": "type-to-unlock.blockAction",
+                "key": "left",
+                "when": "editorTextFocus && typeToUnlock.active && typeToUnlock.strictMode"
+            },
+            {
+                "command": "type-to-unlock.blockAction",
+                "key": "right",
+                "when": "editorTextFocus && typeToUnlock.active && typeToUnlock.strictMode"
+            },
+            {
+                "command": "type-to-unlock.blockAction",
+                "key": "up",
+                "when": "editorTextFocus && typeToUnlock.active && typeToUnlock.strictMode"
+            },
+            {
+                "command": "type-to-unlock.blockAction",
+                "key": "down",
+                "when": "editorTextFocus && typeToUnlock.active && typeToUnlock.strictMode"
+            },
+            {
+                "command": "type-to-unlock.blockAction",
+                "key": "enter",
+                "when": "editorTextFocus && typeToUnlock.active && typeToUnlock.strictMode"
+            },
+            {
+                "command": "type-to-unlock.blockAction",
+                "key": "ctrl+v",
+                "mac": "cmd+v",
+                "when": "editorTextFocus && typeToUnlock.active && typeToUnlock.strictMode"
+            },
+            {
+                "command": "type-to-unlock.blockAction",
+                "key": "shift+insert",
+                "when": "editorTextFocus && typeToUnlock.active && typeToUnlock.strictMode"
             }
         ],
         "configuration": {
