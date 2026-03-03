@@ -133,6 +133,90 @@ function finalizeChallenge() {
     );
 }
 
+// Centralized unlock handler
+async function handleUnlock(options: { mode: 'char' | 'line' }) {
+    if (!unlockModeActive) {
+        return;
+    }
+
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        return;
+    }
+
+    if (currentPointer < storedCode.length) {
+        sessionStats.keystrokes++;
+
+        let nextPointer = currentPointer;
+        let currentLineText = "";
+
+        if (explainModeEnabled || challengeModeEnabled || options.mode === 'line') {
+            nextPointer = storedCode.indexOf('\n', currentPointer);
+            if (nextPointer === -1) {
+                nextPointer = storedCode.length;
+                currentLineText = storedCode.substring(currentPointer);
+            } else {
+                currentLineText = storedCode.substring(currentPointer, nextPointer);
+                nextPointer++; // Include newline character
+            }
+
+            if (challengeModeEnabled) {
+                const prediction = await vscode.window.showInputBox({
+                    prompt: 'Predict the next line of code',
+                    placeHolder: 'Prediction...'
+                });
+
+                if (prediction === undefined) {
+                    return; // Aborted input
+                }
+
+                const normalizedPrediction = normalizeLine(prediction);
+                const normalizedActual = normalizeLine(currentLineText);
+                const similarity = calculateSimilarity(normalizedPrediction, normalizedActual);
+
+                challengeStats.linesChallenged++;
+                if (similarity >= 0.5) {
+                    challengeStats.linesMatched++;
+                }
+
+            } else if (explainModeEnabled) {
+                const explanation = await vscode.window.showInputBox({
+                    prompt: 'Explain what this line does (>= 10 chars required)',
+                    placeHolder: 'Explanation...'
+                });
+
+                if (!explanation || explanation.length < 10) {
+                    vscode.window.showWarningMessage('Explanation too short! Must be at least 10 characters.');
+                    return; // Abort unlocking this line
+                }
+            }
+        } else {
+            const config = vscode.workspace.getConfiguration('typeToUnlock');
+            const charsToUnlock = Math.max(1, config.get<number>('charsPerKeypress', 1));
+            nextPointer = Math.min(storedCode.length, currentPointer + charsToUnlock);
+        }
+
+        const chunkToInsert = storedCode.substring(currentPointer, nextPointer);
+
+        editor.edit(editBuilder => {
+            editBuilder.insert(editor.selection.active, chunkToInsert);
+        }).then(success => {
+            if (success) {
+                sessionStats.charsUnlocked += (nextPointer - currentPointer);
+                currentPointer = nextPointer;
+
+                if (currentPointer >= storedCode.length) {
+                    setUnlockMode(false);
+                    storedCode = '';
+                    vscode.window.showInformationMessage('Code fully unlocked!');
+                    showStats();
+                    finalizeChallenge();
+                }
+            }
+        });
+    }
+}
+
 
 export function activate(context: vscode.ExtensionContext) {
     // Feature 1: Strict Mode Command overrides
@@ -220,165 +304,11 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     const keypressCommand = vscode.commands.registerCommand('type-to-unlock.keypress', async () => {
-        if (!unlockModeActive) {
-            return;
-        }
-
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) {
-            return;
-        }
-
-        if (currentPointer < storedCode.length) {
-            sessionStats.keystrokes++;
-
-            let nextPointer = currentPointer;
-            let currentLineText = "";
-
-            if (explainModeEnabled || challengeModeEnabled) {
-                // Explain / Challenge mode forces line-by-line unlock
-                nextPointer = storedCode.indexOf('\n', currentPointer);
-                if (nextPointer === -1) {
-                    nextPointer = storedCode.length;
-                    currentLineText = storedCode.substring(currentPointer);
-                } else {
-                    currentLineText = storedCode.substring(currentPointer, nextPointer);
-                    nextPointer++; // Include newline character
-                }
-
-                if (challengeModeEnabled) {
-                    const prediction = await vscode.window.showInputBox({
-                        prompt: 'Predict the next line of code',
-                        placeHolder: 'Prediction...'
-                    });
-
-                    if (prediction === undefined) {
-                        return; // Aborted input
-                    }
-
-                    const normalizedPrediction = normalizeLine(prediction);
-                    const normalizedActual = normalizeLine(currentLineText);
-                    const similarity = calculateSimilarity(normalizedPrediction, normalizedActual);
-
-                    challengeStats.linesChallenged++;
-                    if (similarity >= 0.5) {
-                        challengeStats.linesMatched++;
-                    }
-
-                } else if (explainModeEnabled) {
-                    const explanation = await vscode.window.showInputBox({
-                        prompt: 'Explain what this line does (>= 10 chars required)',
-                        placeHolder: 'Explanation...'
-                    });
-
-                    if (!explanation || explanation.length < 10) {
-                        vscode.window.showWarningMessage('Explanation too short! Must be at least 10 characters.');
-                        return; // Abort unlocking this line
-                    }
-                }
-
-            } else {
-                // Normal mode unlocks char-by-char
-                const config = vscode.workspace.getConfiguration('typeToUnlock');
-                const charsToUnlock = Math.max(1, config.get<number>('charsPerKeypress', 1));
-                nextPointer = Math.min(storedCode.length, currentPointer + charsToUnlock);
-            }
-
-            const chunkToInsert = storedCode.substring(currentPointer, nextPointer);
-
-            editor.edit(editBuilder => {
-                editBuilder.insert(editor.selection.active, chunkToInsert);
-            }).then(success => {
-                if (success) {
-                    sessionStats.charsUnlocked += (nextPointer - currentPointer);
-                    currentPointer = nextPointer;
-
-                    if (currentPointer >= storedCode.length) {
-                        setUnlockMode(false);
-                        storedCode = '';
-                        vscode.window.showInformationMessage('Code fully unlocked!');
-                        showStats();
-                        finalizeChallenge();
-                    }
-                }
-            });
-        }
+        await handleUnlock({ mode: 'char' });
     });
 
     const keypressLineCommand = vscode.commands.registerCommand('type-to-unlock.keypressLine', async () => {
-        if (!unlockModeActive) {
-            return;
-        }
-
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) {
-            return;
-        }
-
-        if (currentPointer < storedCode.length) {
-            sessionStats.keystrokes++;
-
-            let nextPointer = storedCode.indexOf('\n', currentPointer);
-            let currentLineText = "";
-            if (nextPointer === -1) {
-                nextPointer = storedCode.length;
-                currentLineText = storedCode.substring(currentPointer);
-            } else {
-                currentLineText = storedCode.substring(currentPointer, nextPointer);
-                nextPointer++; // Include the newline character
-            }
-
-            if (challengeModeEnabled) {
-                const prediction = await vscode.window.showInputBox({
-                    prompt: 'Predict the next line of code',
-                    placeHolder: 'Prediction...'
-                });
-
-                if (prediction === undefined) {
-                    return; // Aborted input
-                }
-
-                const normalizedPrediction = normalizeLine(prediction);
-                const normalizedActual = normalizeLine(currentLineText);
-                const similarity = calculateSimilarity(normalizedPrediction, normalizedActual);
-
-                challengeStats.linesChallenged++;
-                if (similarity >= 0.5) {
-                    challengeStats.linesMatched++;
-                }
-
-            } else if (explainModeEnabled) {
-                const explanation = await vscode.window.showInputBox({
-                    prompt: 'Explain what this line does (>= 10 chars required)',
-                    placeHolder: 'Explanation...'
-                });
-
-                if (!explanation || explanation.length < 10) {
-                    vscode.window.showWarningMessage('Explanation too short! Must be at least 10 characters.');
-                    return; // Abort unlocking this line
-                }
-            }
-
-
-            const chunkToInsert = storedCode.substring(currentPointer, nextPointer);
-
-            editor.edit(editBuilder => {
-                editBuilder.insert(editor.selection.active, chunkToInsert);
-            }).then(success => {
-                if (success) {
-                    sessionStats.charsUnlocked += (nextPointer - currentPointer);
-                    currentPointer = nextPointer;
-
-                    if (currentPointer >= storedCode.length) {
-                        setUnlockMode(false);
-                        storedCode = '';
-                        vscode.window.showInformationMessage('Code fully unlocked!');
-                        showStats();
-                        finalizeChallenge();
-                    }
-                }
-            });
-        }
+        await handleUnlock({ mode: 'line' });
     });
 
     context.subscriptions.push(
