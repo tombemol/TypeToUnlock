@@ -38,6 +38,10 @@
                 "title": "TypeToUnlock: Toggle Explain Mode"
             },
             {
+                "command": "type-to-unlock.toggleChallengeMode",
+                "title": "TypeToUnlock: Toggle Challenge Mode"
+            },
+            {
                 "command": "type-to-unlock.showStats",
                 "title": "TypeToUnlock: Show Stats"
             },

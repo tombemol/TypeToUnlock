@@ -19,6 +19,13 @@ let sessionStats = {
     isActive: false
 };
 
+// Feature 4: Challenge Mode
+let challengeModeEnabled = false;
+let challengeStats = {
+    linesChallenged: 0,
+    linesMatched: 0
+};
+
 function resetStats() {
     sessionStats = {
         keystrokes: 0,
@@ -26,6 +33,10 @@ function resetStats() {
         endTime: 0,
         charsUnlocked: 0,
         isActive: false
+    };
+    challengeStats = {
+        linesChallenged: 0,
+        linesMatched: 0
     };
 }
 
@@ -47,7 +58,7 @@ function showStats() {
     const timeSpentMs = endTime - sessionStats.startTime;
     const timeSpentSec = (timeSpentMs / 1000).toFixed(2);
     const speed = parseFloat(timeSpentSec) > 0 ? (sessionStats.charsUnlocked / parseFloat(timeSpentSec)).toFixed(2) : "0.00";
-    
+
     vscode.window.showInformationMessage(
         `TypeToUnlock Stats: \n` +
         `- Keystrokes: ${sessionStats.keystrokes}\n` +
@@ -60,16 +71,68 @@ function showStats() {
 function setUnlockMode(active: boolean) {
     unlockModeActive = active;
     vscode.commands.executeCommand('setContext', 'typeToUnlock.active', active);
-    
+
     if (!active) {
-        // Automatically deactivate strict mode context when unlock finishes
+        // Automatically deactivate strict mode and challenge mode context when unlock finishes
         vscode.commands.executeCommand('setContext', 'typeToUnlock.strictMode', false);
+        vscode.commands.executeCommand('setContext', 'typeToUnlock.challengeMode', false);
         stopStats();
     } else {
         vscode.commands.executeCommand('setContext', 'typeToUnlock.strictMode', strictModeEnabled);
+        vscode.commands.executeCommand('setContext', 'typeToUnlock.challengeMode', challengeModeEnabled);
         startStats();
     }
 }
+
+// Challenge Mode Helpers
+function normalizeLine(line: string): string[] {
+    return line.trim().toLowerCase().split(/\s+/).filter(word => word.length > 0);
+}
+
+function calculateSimilarity(prediction: string[], actual: string[]): number {
+    if (actual.length === 0) return prediction.length === 0 ? 1 : 0;
+
+    let matchCount = 0;
+    const actualCopy = [...actual];
+
+    for (const word of prediction) {
+        const index = actualCopy.indexOf(word);
+        if (index > -1) {
+            matchCount++;
+            actualCopy.splice(index, 1);
+        }
+    }
+
+    return matchCount / actual.length;
+}
+
+function finalizeChallenge() {
+    if (!challengeModeEnabled || challengeStats.linesChallenged === 0) return;
+
+    const matched = challengeStats.linesMatched;
+    const challenged = challengeStats.linesChallenged;
+    const accuracy = challenged > 0 ? Math.round((matched / challenged) * 100) : 0;
+
+    let message = "";
+    if (accuracy < 40) {
+        message = "The AI carried you today.";
+    } else if (accuracy < 70) {
+        message = "You're thinking. Keep sharpening.";
+    } else if (accuracy <= 90) {
+        message = "You're dangerous.";
+    } else {
+        message = "AI might be learning from you.";
+    }
+
+    vscode.window.showInformationMessage(
+        `Challenge Complete.\n\n` +
+        `Lines matched: ${matched} / ${challenged}\n` +
+        `Accuracy: ${accuracy}%\n\n` +
+        `Message:\n${message}`,
+        { modal: true }
+    );
+}
+
 
 export function activate(context: vscode.ExtensionContext) {
     // Feature 1: Strict Mode Command overrides
@@ -96,12 +159,35 @@ export function activate(context: vscode.ExtensionContext) {
     // Feature 2: Explain Mode
     const toggleExplainModeCommand = vscode.commands.registerCommand('type-to-unlock.toggleExplainMode', () => {
         explainModeEnabled = !explainModeEnabled;
-        vscode.window.showInformationMessage(`TypeToUnlock Explain Mode: ${explainModeEnabled ? 'ON' : 'OFF'}`);
+        if (explainModeEnabled && challengeModeEnabled) {
+            challengeModeEnabled = false; // Mutually exclusive
+            if (unlockModeActive) {
+                vscode.commands.executeCommand('setContext', 'typeToUnlock.challengeMode', false);
+            }
+            vscode.window.showInformationMessage(`TypeToUnlock Explain Mode: ON (Challenge Mode disabled)`);
+        } else {
+            vscode.window.showInformationMessage(`TypeToUnlock Explain Mode: ${explainModeEnabled ? 'ON' : 'OFF'}`);
+        }
     });
 
     // Feature 3: Stats Mode
     const showStatsCommand = vscode.commands.registerCommand('type-to-unlock.showStats', () => {
         showStats();
+    });
+
+    // Feature 4: Challenge Mode
+    const toggleChallengeModeCommand = vscode.commands.registerCommand('type-to-unlock.toggleChallengeMode', () => {
+        challengeModeEnabled = !challengeModeEnabled;
+        if (challengeModeEnabled && explainModeEnabled) {
+            explainModeEnabled = false; // Mutually exclusive
+            vscode.window.showInformationMessage(`TypeToUnlock Challenge Mode: ON (Explain Mode disabled)`);
+        } else {
+            vscode.window.showInformationMessage(`TypeToUnlock Challenge Mode: ${challengeModeEnabled ? 'ON' : 'OFF'}`);
+        }
+
+        if (unlockModeActive) {
+            vscode.commands.executeCommand('setContext', 'typeToUnlock.challengeMode', challengeModeEnabled);
+        }
     });
 
     const startCommand = vscode.commands.registerCommand('type-to-unlock.start', async () => {
@@ -147,25 +233,50 @@ export function activate(context: vscode.ExtensionContext) {
             sessionStats.keystrokes++;
 
             let nextPointer = currentPointer;
-            
-            if (explainModeEnabled) {
-                // Explain mode forces line-by-line unlock
+            let currentLineText = "";
+
+            if (explainModeEnabled || challengeModeEnabled) {
+                // Explain / Challenge mode forces line-by-line unlock
                 nextPointer = storedCode.indexOf('\n', currentPointer);
                 if (nextPointer === -1) {
                     nextPointer = storedCode.length;
+                    currentLineText = storedCode.substring(currentPointer);
                 } else {
+                    currentLineText = storedCode.substring(currentPointer, nextPointer);
                     nextPointer++; // Include newline character
                 }
 
-                const explanation = await vscode.window.showInputBox({
-                    prompt: 'Explain what this line does (>= 10 chars required)',
-                    placeHolder: 'Explanation...'
-                });
+                if (challengeModeEnabled) {
+                    const prediction = await vscode.window.showInputBox({
+                        prompt: 'Predict the next line of code',
+                        placeHolder: 'Prediction...'
+                    });
 
-                if (!explanation || explanation.length < 10) {
-                    vscode.window.showWarningMessage('Explanation too short! Must be at least 10 characters.');
-                    return; // Abort unlocking this line
+                    if (prediction === undefined) {
+                        return; // Aborted input
+                    }
+
+                    const normalizedPrediction = normalizeLine(prediction);
+                    const normalizedActual = normalizeLine(currentLineText);
+                    const similarity = calculateSimilarity(normalizedPrediction, normalizedActual);
+
+                    challengeStats.linesChallenged++;
+                    if (similarity >= 0.5) {
+                        challengeStats.linesMatched++;
+                    }
+
+                } else if (explainModeEnabled) {
+                    const explanation = await vscode.window.showInputBox({
+                        prompt: 'Explain what this line does (>= 10 chars required)',
+                        placeHolder: 'Explanation...'
+                    });
+
+                    if (!explanation || explanation.length < 10) {
+                        vscode.window.showWarningMessage('Explanation too short! Must be at least 10 characters.');
+                        return; // Abort unlocking this line
+                    }
                 }
+
             } else {
                 // Normal mode unlocks char-by-char
                 const config = vscode.workspace.getConfiguration('typeToUnlock');
@@ -187,13 +298,14 @@ export function activate(context: vscode.ExtensionContext) {
                         storedCode = '';
                         vscode.window.showInformationMessage('Code fully unlocked!');
                         showStats();
+                        finalizeChallenge();
                     }
                 }
             });
         }
     });
 
-    const keypressLineCommand = vscode.commands.registerCommand('type-to-unlock.keypressLine', () => {
+    const keypressLineCommand = vscode.commands.registerCommand('type-to-unlock.keypressLine', async () => {
         if (!unlockModeActive) {
             return;
         }
@@ -205,13 +317,48 @@ export function activate(context: vscode.ExtensionContext) {
 
         if (currentPointer < storedCode.length) {
             sessionStats.keystrokes++;
-            
+
             let nextPointer = storedCode.indexOf('\n', currentPointer);
+            let currentLineText = "";
             if (nextPointer === -1) {
                 nextPointer = storedCode.length;
+                currentLineText = storedCode.substring(currentPointer);
             } else {
+                currentLineText = storedCode.substring(currentPointer, nextPointer);
                 nextPointer++; // Include the newline character
             }
+
+            if (challengeModeEnabled) {
+                const prediction = await vscode.window.showInputBox({
+                    prompt: 'Predict the next line of code',
+                    placeHolder: 'Prediction...'
+                });
+
+                if (prediction === undefined) {
+                    return; // Aborted input
+                }
+
+                const normalizedPrediction = normalizeLine(prediction);
+                const normalizedActual = normalizeLine(currentLineText);
+                const similarity = calculateSimilarity(normalizedPrediction, normalizedActual);
+
+                challengeStats.linesChallenged++;
+                if (similarity >= 0.5) {
+                    challengeStats.linesMatched++;
+                }
+
+            } else if (explainModeEnabled) {
+                const explanation = await vscode.window.showInputBox({
+                    prompt: 'Explain what this line does (>= 10 chars required)',
+                    placeHolder: 'Explanation...'
+                });
+
+                if (!explanation || explanation.length < 10) {
+                    vscode.window.showWarningMessage('Explanation too short! Must be at least 10 characters.');
+                    return; // Abort unlocking this line
+                }
+            }
+
 
             const chunkToInsert = storedCode.substring(currentPointer, nextPointer);
 
@@ -227,6 +374,7 @@ export function activate(context: vscode.ExtensionContext) {
                         storedCode = '';
                         vscode.window.showInformationMessage('Code fully unlocked!');
                         showStats();
+                        finalizeChallenge();
                     }
                 }
             });
@@ -234,12 +382,13 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     context.subscriptions.push(
-        startCommand, 
-        startFromClipboardCommand, 
-        keypressCommand, 
+        startCommand,
+        startFromClipboardCommand,
+        keypressCommand,
         keypressLineCommand,
         toggleStrictModeCommand,
         toggleExplainModeCommand,
+        toggleChallengeModeCommand,
         showStatsCommand,
         blockActionCommand,
         originalTypeCommand
